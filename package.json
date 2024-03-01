@@ -48,7 +48,7 @@
     "compile": "tsc -p tsconfig.json && babel build --out-dir build --out-file-extension .cjs",
     "create-cts": "for f in build/**/*.d.ts; do cp -- \"$f\" \"${f%.ts}.cts\"; done && for f in build/*.d.ts; do cp -- \"$f\" \"${f%.ts}.cts\"; done",
     "build": "rollup --config rollup.config.js",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test": "jest",
     "docs": "typedoc --entryPointStrategy expand --includeVersion --excludePrivate ./src/entrypoints/node.ts ./src/entrypoints/gas.ts ./src/entrypoints/browser.ts"
   },
   "repository": {

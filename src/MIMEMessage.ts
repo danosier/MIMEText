@@ -1,9 +1,14 @@
-import type { Email, MailboxAddrObject, MailboxAddrText, MailboxConfig } from './Mailbox.js'
+import type { Email, MailboxAddrObject, MailboxAddrText, MailboxConfig, MailboxType } from './Mailbox'
 
-import { MIMETextError } from './MIMETextError.js'
-import { type HeadersObject, MIMEMessageHeader } from './MIMEMessageHeader.js'
-import { Mailbox } from './Mailbox.js'
-import { MIMEMessageContent } from './MIMEMessageContent.js'
+import { MIMETextError } from './MIMETextError'
+import {
+    type ExplicitHeaderFieldValueTypes,
+    type HeaderFields,
+    type HeadersObject,
+    MIMEMessageHeader
+} from './MIMEMessageHeader.js'
+import { Mailbox } from './Mailbox'
+import { MIMEMessageContent } from './MIMEMessageContent'
 
 export class MIMEMessage {
     envctx: EnvironmentContext
@@ -61,7 +66,7 @@ export class MIMEMessage {
                 '--' + this.boundaries.mixed + eol +
                 'Content-Type: multipart/related; boundary=' + this.boundaries.related + eol +
                 eol +
-                this.dumpTextContent(plaintext, html, this.boundaries.related) + eol +
+                this.dumpTextContent(plaintext, html, this.boundaries.related ?? '') + eol +
                 eol +
                 inlineAttachments +
                 '--' + this.boundaries.related + '--' + eol +
@@ -87,7 +92,7 @@ export class MIMEMessage {
             return lines + eol +
                 'Content-Type: multipart/related; boundary=' + this.boundaries.related + eol +
                 eol +
-                this.dumpTextContent(plaintext, html, this.boundaries.related) + eol +
+                this.dumpTextContent(plaintext, html, this.boundaries.related ?? '') + eol +
                 eol +
                 inlineAttachments +
                 '--' + this.boundaries.related + '--'
@@ -234,7 +239,7 @@ export class MIMEMessage {
         return mailbox
     }
 
-    getSender (): string | Mailbox | undefined {
+    getSender (): Mailbox | undefined {
         return this.getHeader('From')
     }
 
@@ -245,7 +250,7 @@ export class MIMEMessage {
         return recs
     }
 
-    getRecipients (config: MailboxConfig = { type: 'To' }): string | Mailbox | undefined {
+    getRecipients (config: { type: Exclude<MailboxType, 'From'> } = { type: 'To' }): Mailbox[] | undefined {
         return this.getHeader(config.type)
     }
 
@@ -266,12 +271,12 @@ export class MIMEMessage {
     }
 
     setSubject (value: string): string {
-        this.setHeader('subject', value)
+        this.setHeader('Subject', value)
         return value
     }
 
-    getSubject (): string | Mailbox | undefined {
-        return this.getHeader('subject')
+    getSubject (): string | undefined {
+        return this.getHeader('Subject')
     }
 
     setHeader (name: string, value: any): string {
@@ -279,7 +284,7 @@ export class MIMEMessage {
         return name
     }
 
-    getHeader (name: string): string | Mailbox | undefined {
+    getHeader<T extends keyof HeaderFields> (name: T): ExplicitHeaderFieldValueTypes<T> | undefined {
         return this.headers.get(name)
     }
 
@@ -288,7 +293,7 @@ export class MIMEMessage {
     }
 
     getHeaders (): HeadersObject {
-        return this.headers.toObject()
+        return this.headers.toValues()
     }
 
     toBase64 (v: string): string {
@@ -326,7 +331,7 @@ export interface EnvironmentContext {
 export interface Boundaries {
     mixed: string
     alt: string
-    related: string
+    related?: string
 }
 
 export type ContentTransferEncoding = '7bit' | '8bit' | 'binary' | 'quoted-printable' | 'base64'

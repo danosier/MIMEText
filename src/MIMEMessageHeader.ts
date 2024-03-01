@@ -9,63 +9,53 @@ import { Mailbox } from './Mailbox.js'
 
 export class MIMEMessageHeader {
     envctx: EnvironmentContext
-    fields: HeaderField[] = [
-        {
-            name: 'Date',
+    protected fields: HeaderFields = {
+        Date: {
             generator: () => ((new Date()).toUTCString()).replace(/GMT|UTC/gi, '+0000')
         },
-        {
-            name: 'From',
+        From: {
             required: true,
             validate: (v: unknown) => this.validateMailboxSingle(v),
-            dump: (v: unknown) => this.dumpMailboxSingle(v)
+            dump: (v: Mailbox) => this.dumpMailboxSingle(v)
         },
-        {
-            name: 'Sender',
+        Sender: {
             validate: (v: unknown) => this.validateMailboxSingle(v),
-            dump: (v: unknown) => this.dumpMailboxSingle(v)
+            dump: (v: Mailbox) => this.dumpMailboxSingle(v)
         },
-        {
-            name: 'Reply-To',
+        'Reply-To': {
             validate: (v: unknown) => this.validateMailboxSingle(v),
-            dump: (v: unknown) => this.dumpMailboxSingle(v)
+            dump: (v: Mailbox) => this.dumpMailboxSingle(v)
         },
-        {
-            name: 'To',
+        To: {
             validate: (v: unknown) => this.validateMailboxMulti(v),
-            dump: (v: unknown) => this.dumpMailboxMulti(v)
+            dump: (v: Mailbox[]) => this.dumpMailboxMulti(v)
         },
-        {
-            name: 'Cc',
+        Cc: {
             validate: (v: unknown) => this.validateMailboxMulti(v),
-            dump: (v: unknown) => this.dumpMailboxMulti(v)
+            dump: (v: Mailbox[]) => this.dumpMailboxMulti(v)
         },
-        {
-            name: 'Bcc',
+        Bcc: {
             validate: (v: unknown) => this.validateMailboxMulti(v),
-            dump: (v: unknown) => this.dumpMailboxMulti(v)
+            dump: (v: Mailbox[]) => this.dumpMailboxMulti(v)
         },
-        {
-            name: 'Message-ID',
+        'Message-ID': {
             generator: () => {
                 const randomstr = Math.random().toString(36).slice(2)
-                const from: Mailbox = (this.fields.filter((obj) => obj.name === 'From')[0] as HeaderField).value as Mailbox
-                const domain = from.getAddrDomain()
+                const from = this.fields.From?.value
+                const domain = from?.getAddrDomain()
                 return '<' + randomstr + '@' + domain + '>'
             }
         },
-        {
-            name: 'Subject',
+        Subject: {
             required: true,
             dump: (v: unknown) => {
                 return typeof v === 'string' ? '=?utf-8?B?' + this.envctx.toBase64(v) + '?=' : ''
             }
         },
-        {
-            name: 'MIME-Version',
+        'MIME-Version': {
             generator: () => '1.0'
         }
-    ]
+    }
 
     constructor (envctx: EnvironmentContext) {
         this.envctx = envctx
@@ -74,65 +64,61 @@ export class MIMEMessageHeader {
     dump (): string {
         let lines = ''
 
-        for (const field of this.fields) {
+        for (const [name, field] of Object.entries(this.fields)) {
+            if (!this.isHeaderField(field)) continue
             if (field.disabled) continue
             const isValueDefinedByUser = field.value !== undefined && field.value !== null
             if (!isValueDefinedByUser && field.required) {
-                throw new MIMETextError('MIMETEXT_MISSING_HEADER', `The "${field.name}" header is required.`)
+                throw new MIMETextError('MIMETEXT_MISSING_HEADER', `The "${name}" header is required.`)
             }
             if (!isValueDefinedByUser && typeof field.generator !== 'function') continue
             if (!isValueDefinedByUser && typeof field.generator === 'function') field.value = field.generator()
-            const strval = Object.hasOwn(field, 'dump') && typeof field.dump === 'function'
+            const strval = Object.hasOwn(field, 'dump') && typeof field.dump === 'function' && field.value
                 ? field.dump(field.value)
                 : typeof field.value === 'string' ? field.value : ''
-            lines += `${field.name}: ${strval}${this.envctx.eol}`
+            lines += `${name}: ${strval}${this.envctx.eol}`
         }
 
         return lines.slice(0, -1 * this.envctx.eol.length)
     }
 
-    toObject (): HeadersObject {
-        return this.fields.reduce((memo: HeadersObject, item) => {
-            memo[item.name] = item.value
+    toValues (): HeadersObject {
+        return Object.entries(this.fields).reduce((memo: HeadersObject, [key, headerField]) => {
+            memo[key] = headerField.value
             return memo
         }, {})
     }
 
-    get (name: string): string | Mailbox | undefined {
-        const fieldMatcher = (obj: HeaderField): boolean => obj.name.toLowerCase() === name.toLowerCase()
-        const ind = this.fields.findIndex(fieldMatcher)
-
-        return ind !== -1 ? (this.fields[ind] as HeaderField).value : undefined
+    get<T extends keyof HeaderFields> (name: T): ExplicitHeaderFieldValueTypes<T> | undefined {
+        return this.fields[name]?.value
     }
 
-    set (name: string, value: any): HeaderField {
-        const fieldMatcher = (obj: HeaderField): boolean => obj.name.toLowerCase() === name.toLowerCase()
-        const isCustomHeader = !this.fields.some(fieldMatcher)
+    set (name: keyof HeaderFields, value: any): HeaderField {
+        const isCustomHeader = !Object.hasOwn(this.fields, name)
 
         if (!isCustomHeader) {
-            const ind = this.fields.findIndex(fieldMatcher)
-            const field = this.fields[ind] as HeaderField
+            // const ind = this.fields.findIndex(fieldMatcher)
+            const field = this.fields[name]
             if (field.validate && !field.validate(value)) {
                 throw new MIMETextError('MIMETEXT_INVALID_HEADER_VALUE', `The value for the header "${name}" is invalid.`)
             }
-            (this.fields[ind] as HeaderField).value = value
-            return this.fields[ind] as HeaderField
+            this.fields[name].value = value
+            return this.fields[name]
         }
 
-        return this.setCustom({
-            name: name,
-            value: value,
+        return this.setCustom(name, {
+            value,
             custom: true,
             dump: (v: unknown) => typeof v === 'string' ? v : ''
         })
     }
 
-    setCustom (obj: HeaderField): HeaderField {
+    setCustom (name: string, obj: any): HeaderField {
         if (this.isHeaderField(obj)) {
             if (typeof obj.value !== 'string') {
                 throw new MIMETextError('MIMETEXT_INVALID_HEADER_FIELD', 'Custom header must have a value.')
             }
-            this.fields.push(obj)
+            this.fields[name] = obj
             return obj
         }
 
@@ -147,14 +133,14 @@ export class MIMEMessageHeader {
         return v instanceof Mailbox || this.isArrayOfMailboxes(v)
     }
 
-    dumpMailboxMulti (v: unknown): string {
+    dumpMailboxMulti (v: Mailbox[]): string {
         const dump = (item: Mailbox): string => item.name.length === 0
             ? item.dump()
             : `=?utf-8?B?${this.envctx.toBase64(item.name)}?= <${item.addr}>`
-        return this.isArrayOfMailboxes(v) ? v.map(dump).join(`,${this.envctx.eol} `) : v instanceof Mailbox ? dump(v) : ''
+        return this.isArrayOfMailboxes(v) ? v.map(dump).join(`,${this.envctx.eol} `) : dump(v)
     }
 
-    dumpMailboxSingle (v: unknown): string {
+    dumpMailboxSingle (v: Mailbox): string {
         const dump = (item: Mailbox): string => item.name.length === 0
             ? item.dump()
             : `=?utf-8?B?${this.envctx.toBase64(item.name)}?= <${item.addr}>`
@@ -162,13 +148,22 @@ export class MIMEMessageHeader {
     }
 
     isHeaderField (v: unknown): v is HeaderField {
-        const validProps = ['name', 'value', 'dump', 'required', 'disabled', 'generator', 'custom']
+        function isValidProp (prop: string): boolean {
+            const validProps = ['value', 'dump', 'required', 'disabled', 'generator', 'custom']
+
+            return validProps.includes(prop)
+        }
         if (this.isObject(v)) {
-            const h = v as HeaderField
-            if (Object.hasOwn(h, 'name') && typeof h.name === 'string' && h.name.length > 0) {
-                if (!Object.keys(h).some((prop) => !validProps.includes(prop))) {
-                    return true
+            if ('value' in v) {
+                const value = v.value
+                if (!(typeof value === 'string' || value instanceof Mailbox || (Array.isArray(value) && value[0] instanceof Mailbox))) {
+                    return false
                 }
+            }
+
+            const keys = Object.keys(v)
+            if (keys.some(isValidProp)) {
+                return true
             }
         }
         return false
@@ -188,20 +183,14 @@ export class MIMEMessageHeader {
 }
 
 export class MIMEMessageContentHeader extends MIMEMessageHeader {
-    override fields = [
-        {
-            name: 'Content-ID'
-        },
-        {
-            name: 'Content-Type'
-        },
-        {
-            name: 'Content-Transfer-Encoding'
-        },
-        {
-            name: 'Content-Disposition'
-        }
-    ]
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error
+    override fields = {
+        'Content-ID': {},
+        'Content-Type': {},
+        'Content-Transfer-Encoding': {},
+        'Content-Disposition': {}
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-useless-constructor
     constructor (envctx: EnvironmentContext) {
@@ -209,11 +198,22 @@ export class MIMEMessageContentHeader extends MIMEMessageHeader {
     }
 }
 
-export type HeadersObject = Record<string, string | Mailbox | undefined>
-export interface HeaderField {
-    name: string
-    dump?: (v: string | Mailbox | Mailbox[] | undefined) => string
-    value?: string | Mailbox | undefined
+export type HeadersObject = Record<string, string | Mailbox | Mailbox[] | undefined>
+
+export type ExplicitHeaderFieldNames = 'Date' | 'From' | 'Sender' | 'Reply-To' | 'To' | 'Cc' | 'Bcc' | 'Message-ID' | 'Subject' | 'MIME-Version'
+export type ExplicitHeaderFieldValueTypes<T> =
+    T extends 'From' | 'Sender' | 'Reply-To' ? Mailbox :
+        T extends 'To' | 'Cc' | 'Bcc' ? Mailbox[] : string
+// export type HeaderReturnType<T = ExplicitHeaderFieldNames> = ExplicitHeaderFieldValueTypes<T>
+export type MappedHeaderTypes<T extends ExplicitHeaderFieldNames> = {
+    [K in T]: HeaderField<ExplicitHeaderFieldValueTypes<K>> | undefined
+}
+export type HeaderFields = MappedHeaderTypes<ExplicitHeaderFieldNames> & Record<string, any>
+
+export interface HeaderField<T = string | Mailbox | Mailbox[]> {
+    // name: string
+    dump?: (v: T) => string
+    value?: T
     validate?: (v: unknown) => boolean
     required?: boolean
     disabled?: boolean

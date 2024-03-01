@@ -1,13 +1,12 @@
 import type { EnvironmentContext } from './MIMEMessage'
-import type { Mailbox } from './Mailbox'
-import { type HeadersObject, MIMEMessageContentHeader } from './MIMEMessageHeader.js'
+import { type HeadersObject, MIMEMessageContentHeader, type MIMEMessageHeader } from './MIMEMessageHeader'
 
 export class MIMEMessageContent {
     envctx: EnvironmentContext
     headers
     data
 
-    constructor (envctx: EnvironmentContext, data: string, headers = {}) {
+    constructor (envctx: EnvironmentContext, data: string, headers: Record<string, any> = {}) {
         this.envctx = envctx
         this.headers = new MIMEMessageContentHeader(this.envctx)
         this.data = data
@@ -34,7 +33,7 @@ export class MIMEMessageContent {
         return name
     }
 
-    getHeader (name: string): string | Mailbox | undefined {
+    getHeader (name: string): ReturnType<MIMEMessageHeader['get']> {
         return this.headers.get(name)
     }
 
@@ -43,6 +42,6 @@ export class MIMEMessageContent {
     }
 
     getHeaders (): HeadersObject {
-        return this.headers.toObject()
+        return this.headers.toValues()
     }
 }

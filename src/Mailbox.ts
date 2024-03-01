@@ -1,4 +1,5 @@
-import { MIMETextError } from './MIMETextError.js'
+import { MIMETextError } from './MIMETextError'
+import { type ExplicitHeaderFieldNames } from './MIMEMessageHeader'
 
 export class Mailbox {
     reSpecCompliantAddr = /(([^<>\r\n]+)\s)?<[^\r\n]+>/
@@ -6,7 +7,7 @@ export class Mailbox {
     addr = ''
     type: MailboxType = 'To'
 
-    constructor (input: MailboxAddrObject | MailboxAddrText | Email, config: MailboxConfig = { type: 'To' }) {
+    constructor (input: MailboxAddrObject | MailboxAddrText | Email | string, config: MailboxConfig = { type: 'To' }) {
         this.type = config.type
 
         this.parse(input)
@@ -52,6 +53,7 @@ export class Mailbox {
             return this
         }
 
+        // WHEN DOES IT HIT THIS?
         throw new MIMETextError('MIMETEXT_INVALID_MAILBOX', 'Couldn\'t recognize the input.')
     }
 
@@ -76,6 +78,6 @@ export interface MailboxAddrObject {
     name?: string
     type?: MailboxType
 }
-export type MailboxType = 'To' | 'From' | 'Cc' | 'Bcc'
+export type MailboxType = Exclude<ExplicitHeaderFieldNames, 'Date' | 'Sender' | 'Reply-To' | 'Message-ID' | 'Subject' | 'MIME-Version'>
 export type Email = string
 export type MailboxAddrText = string
